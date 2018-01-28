@@ -213,7 +213,7 @@ class Conversation:
             channel = self.userid
 
         action = "chat.update" if update else "chat.postMessage"
-        username = self.name + "'s Standup report (via standupbot)" if postAsUser else "Standup report"
+        username = self.name + " (via @standupbot)" if postAsUser else "Standup"
         iconurl = self.icon_url if postAsUser else None
         return slack_client.api_call(
             action,
