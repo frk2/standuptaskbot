@@ -1,5 +1,5 @@
 # A bot focused (only) on the user experience
-A standup slack bot which remembers what you did last so it doesn't keep on asking 'what did you do yesterday'. I was trying to bring something simple to Voyage (where I work) but every standup bot out there (I tested about 6) was heavily focused on the task tracking/enterprisy features but not on the actual user experience.
+A standup slack bot which remembers what you did last so it doesn't keep on asking 'what did you do yesterday'. I was trying to bring something simple to [Voyage](http://voyage.auto) (where I work) but every standup bot out there (I tested about 6) was heavily focused on the task tracking/enterprisy features but not on the actual user experience.
 
 # Features
 - Remember and maintain a task list of prior tasks
