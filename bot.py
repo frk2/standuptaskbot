@@ -16,22 +16,37 @@ RTM_READ_DELAY = 1 # 1 second delay between reading from RTM
 EXAMPLE_COMMAND = "do"
 MENTION_REGEX = "^<@(|[WU].+)>(.*)"
 
+kPublishToChannel = "random"
+
 class Bot:
     def __init__(self):
         self.user_list = {}
         self.conversations = {}
+        self.channels = {}
 
     def mainloop(self):
         if slack_client.rtm_connect(with_team_state=False):
             print("Starter Bot connected and running!")
             # Read bot's user ID by calling Web API method `auth.test`
             starterbot_id = slack_client.api_call("auth.test")["user_id"]
-            self.user_list = slack_client.api_call("users.list")["members"]
+            users = slack_client.api_call("users.list")["members"]
+            channels = slack_client.api_call("channels.list")["channels"]
+
+            for user in users:
+                self.user_list[user["id"]] = user
+
+            for channel in channels:
+                self.channels[channel["name"]] = channel["id"]
+
             while True:
-                command, channel = self.parse_bot_commands(slack_client.rtm_read())
-                if command:
-                    self.handle_command(command, channel)
-                time.sleep(RTM_READ_DELAY)
+                try:
+                    command, channel = self.parse_bot_commands(slack_client.rtm_read())
+                    if command:
+                        self.handle_command(command, channel)
+                except Exception as e:
+                    print(e)
+
+                #time.sleep(RTM_READ_DELAY)
         else:
             print("Connection failed. Exception traceback printed above.")
 
@@ -54,7 +69,9 @@ class Bot:
     def handle_dm_command(self, from_user, text, channel):
         print ("Text: {} from user: {}".format(text, from_user))
         if from_user not in self.conversations:
-            self.conversations[from_user] = Conversation(from_user, channel)
+            self.conversations[from_user] = Conversation(from_user, channel,
+                                                         self.user_list[from_user]["real_name"],
+                                                         self.user_list[from_user]["profile"]["image_48"])
 
         self.conversations[from_user].incoming_message(text)
 
@@ -92,87 +109,153 @@ class Bot:
         )
 
 class Conversation:
-    WaitingForInit, WaitingForWIP, WaitingForDone, WaitingForCancelled, WaitingForNew, Published = range(6)
+    WaitingForStart, WaitingForCommands = range(2)
 
-    def __init__(self, uid, channel):
-        self.current_status = self.WaitingForInit
+    def __init__(self, uid, userid, name, icon_url):
+        self.current_status = self.WaitingForStart
         self.uid = uid
-        self.channel = channel
+        self.userid = userid
+        self.name = name
+        self.icon_url = icon_url
         self.task_list = taskmanager.get_tasklist(uid)
+        self.new_tasks = []
+        self.updated_tasks = set()
+        self.main_task_list_ts = None
 
     def incoming_message(self, message):
-        print("Got message: {} for uid {}".format(message, self.uid))
-
         msg = message.lower()
-        if msg.startswith("start"):
-            self.current_status = self.WaitingForInit
-            if (len(self.task_list.tasks) > 0):
-                self.show_task_list()
-                self.transition_to_wip()
-            else:
-                self.transition_to_new()
 
-        elif self.current_status == self.WaitingForWIP:
-            self.mark_status(Status.WIP, msg.split(","))
-            self.transition_to_done()
-        elif self.current_status == self.WaitingForDone:
-            self.mark_status(Status.DONE, msg.split(","))
-            self.transition_to_cancelled()
-        elif self.current_status == self.WaitingForCancelled:
-            self.mark_status(Status.CANCELLED, msg.split(","))
-            self.transition_to_new()
-        elif self.current_status == self.WaitingForNew:
-            if msg == 'done':
-                self.transition_to_published()
+        if self.current_status == self.WaitingForStart:
+            if msg.startswith("start"):
+                self.send_response("_Lets begin!_\n")
+                self.show_help()
+                response = self.show_task_list()
+                self.main_task_list_ts = response["ts"]
+                self.current_status = self.WaitingForCommands
             else:
-                self.add_task(msg)
+                self.send_response("_Type `start` to begin_")
+
+        elif self.current_status == self.WaitingForCommands:
+            if msg.startswith("done"):
+                self.check_and_mark_status(Status.DONE, msg, "Great job getting those done! :clap:\n")
+                self.show_task_list(update=True)
+            elif msg.startswith("wip"):
+                self.check_and_mark_status(Status.WIP, msg, "Its okay we'll get those tomorrow! :punch:\n")
+                self.show_task_list(update=True)
+            elif msg.startswith("cancelled"):
+                self.check_and_mark_status(Status.CANCELLED, msg, "They weren't worth it anyways.. \n")
+                self.show_task_list(update=True)
+            elif msg.startswith("publish"):
+                self.publish()
+                self.current_status = self.WaitingForStart
+
+            elif msg.startswith("-"):
+                lines = msg.strip().split("\n")
+                for line in lines:
+                    split = line.strip().split("-")
+                    if len(split) > 1:
+                        new_task = self.add_task(split[1].strip());
+                        self.new_tasks.append(new_task)
+                        self.updated_tasks.add(new_task)
+
+                self.show_task_list(update=True)
+            else:
+                self.show_help(error=True)
+
+
+    def check_and_mark_status(self, status, msg, success_msg):
+        task_ids = self.get_task_ids(msg)
+        if task_ids:
+            self.send_response(success_msg)
+            self.mark_status(status, task_ids)
+            self.updated_tasks.update(task_ids)
+            print(self.updated_tasks)
+        else:
+            self.show_help(error=True)
+
+    def show_help(self, error=False):
+        if error:
+            self.send_response("I don't understand what you mean :confused:")
+
+        self.send_response("_You can tell me what to mark as done, wip, cancelled by saying `done 1,3,6` "
+                           "for example. To start a new task simply enter a dash and start typing like"
+                           " `- new task for today`_")
+        self.send_response("_As you do so the message above will update reflecting your standup_")
+
+    def publish(self):
+        self.send_response("Publishing to #standup...")
+        self.send_response(self.render_task_list(presentation=True), kPublishToChannel, postAsUser=True)
+        self.task_list.prune()
+        self.main_task_list_ts = None
+
+    def get_task_ids(self, msg):
+        if msg.strip():
+            split = msg.split(" ")
+            if len(split) != 2:
+                return None
+            else:
+                return [int(x) for x in split[1].strip().split(",")]
+        else:
+            return None
+
 
     def mark_status(self, status, task_ids):
-        for task_id in task_ids:
-            self.task_list.change_status(task_id, status)
-
-    def transition_to_wip(self):
-        self.send_response("Which tasks should I mark as :su-wip:? (in csv like 3,5,2)\n")
-        self.current_status = self.WaitingForWIP
-
-    def transition_to_done(self):
-        self.send_response("And completed tasks :su-done:? (in csv like 3,5,2)\n")
-        self.current_status = self.WaitingForDone
-
-    def transition_to_cancelled(self):
-        self.send_response("Any tasks blocked :su-blocked:? (in csv like 3,5,2)\n")
-        self.current_status = self.WaitingForCancelled
-
-    def transition_to_new(self):
-        self.send_response("Tell me what new stuff you are working on one message at a time, say 'done' when done :su-todo:\n")
-        self.current_status = self.WaitingForNew
-
-    def transition_to_published(self):
-        self.send_response("Thank you, Sharing to #standup\n")
-        self.current_status = self.Published
-        self.show_task_list()
+        if task_ids:
+            for task_id in task_ids:
+                if task_id:
+                    self.task_list.change_status(task_id, status)
 
     def add_task(self,msg):
-        self.task_list.add_task(msg)
+        return self.task_list.add_task(msg)
 
 
-    def show_task_list(self):
-        self.send_response(self.render_task_list())
+    def show_task_list(self, update=False):
+        return self.send_response(self.render_task_list(), update=update)
 
-    def render_task_list(self):
-        msg = ""
+    def render_task_list(self, presentation=False):
+        past_msg = ""
+        new_msg = ""
+
         for task_id, desc in self.task_list.tasks.items():
-            msg += self.render(task_id, desc[0], desc[1]) + "\n"
+
+            curr_msg = self.render(task_id, desc[1], desc[2], presentation=presentation) + "\n"
+            if task_id in self.new_tasks:
+                new_msg += curr_msg
+            else:
+                past_msg += curr_msg
+
+        msg = ""
+        if presentation:
+            msg = "*Previously* (status changes in _italics_)\n"
+            msg += past_msg
+
+            if new_msg:
+                msg += "*New Tasks*\n"
+                msg += new_msg
+
+        else:
+            msg = past_msg + new_msg
 
         msg += "\n"
+
         return msg
 
-    def send_response(self, msg):
-        slack_client.api_call(
-            "chat.postMessage",
-            channel=self.channel,
+    def send_response(self, msg, channel=None, update=False, postAsUser=False):
+        if not channel:
+            channel = self.userid
+
+        action = "chat.update" if update else "chat.postMessage"
+        username = self.name + "'s Standup report (via standupbot)" if postAsUser else "Standup report"
+        iconurl = self.icon_url if postAsUser else None
+        return slack_client.api_call(
+            action,
+            channel=channel,
+            username=username,
+            icon_url=iconurl,
+            ts=self.main_task_list_ts,
             text=msg
         )
+
     def get_emoji_for_status(self, status):
         if status == Status.NEW:
             return ":su-todo:"
@@ -183,15 +266,15 @@ class Conversation:
         elif status == Status.CANCELLED:
             return ":su-blocked:"
 
-    def render(self, taskid, desc, status):
-        return "{}:{} {}".format(taskid, self.get_emoji_for_status(status), desc)
+    def render(self, taskid, desc, status, presentation=False):
+        if presentation:
+            msg = "{} {}".format(self.get_emoji_for_status(status), desc)
+        else:
+            msg = "{}:{} {}".format(taskid, self.get_emoji_for_status(status), desc)
 
-
-
-
-
-
-
+        if taskid in self.updated_tasks:
+            msg = "_" + msg + "_"
+        return msg
 
 if __name__ == "__main__":
     Bot().mainloop()
