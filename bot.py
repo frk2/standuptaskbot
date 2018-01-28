@@ -12,11 +12,7 @@ starterbot_id = None
 taskmanager = TaskManager()
 
 # constants
-RTM_READ_DELAY = 1 # 1 second delay between reading from RTM
-EXAMPLE_COMMAND = "do"
-MENTION_REGEX = "^<@(|[WU].+)>(.*)"
-
-kPublishToChannel = "random"
+kPublishToChannel = config.general["post_to_channel"]
 
 class Bot:
     def __init__(self):
@@ -75,39 +71,6 @@ class Bot:
 
         self.conversations[from_user].incoming_message(text)
 
-
-
-    def parse_direct_mention(self, message_text):
-        """
-            Finds a direct mention (a mention that is at the beginning) in message text
-            and returns the user ID which was mentioned. If there is no direct mention, returns None
-        """
-        matches = re.search(MENTION_REGEX, message_text)
-        # the first group contains the username, the second group contains the remaining message
-        return (matches.group(1), matches.group(2).strip()) if matches else (None, None)
-
-    def handle_command(self, command, channel):
-        """
-            Executes bot command if the command is known
-        """
-        print ("command : {}, channel: {}".format(command, channel))
-        # Default response is help text for the user
-        default_response = "Not sure what you mean. Try *{}*.".format(EXAMPLE_COMMAND)
-
-        # Finds and executes the given command, filling in response
-        response =  ":white_check_mark: Make awesome bot \n :white_medium_square: make car autonomous"
-        # This is where you start to implement more commands!
-        if command.startswith(EXAMPLE_COMMAND):
-            response = "Sure...write some more code then I can do that!"
-
-        # Sends the response back to the channel
-        slack_client.api_call(
-            "chat.postMessage",
-            channel=channel,
-            username="Faraz's Standup Report",
-            text=response or default_response
-        )
-
 class Conversation:
     WaitingForStart, WaitingForCommands = range(2)
 
@@ -127,13 +90,13 @@ class Conversation:
 
         if self.current_status == self.WaitingForStart:
             if msg.startswith("start"):
-                self.send_response("_Lets begin!_\n")
+                self.send_response("_Lets begin!_ :punch:\n")
                 self.show_help()
                 response = self.show_task_list()
                 self.main_task_list_ts = response["ts"]
                 self.current_status = self.WaitingForCommands
             else:
-                self.send_response("_Type `start` to begin_")
+                self.send_response("_Type `start` to begin a standup report_")
 
         elif self.current_status == self.WaitingForCommands:
             if msg.startswith("done"):
@@ -177,10 +140,11 @@ class Conversation:
         if error:
             self.send_response("I don't understand what you mean :confused:")
 
-        self.send_response("_You can tell me what to mark as done, wip, cancelled by saying `done 1,3,6` "
+        self.send_response("_You can tell me what to mark as `done`, `wip`, `cancelled` by saying `done 1,3,6` "
                            "for example. To start a new task simply enter a dash and start typing like"
                            " `- new task for today`_")
-        self.send_response("_As you do so the message above will update reflecting your standup_")
+        self.send_response("_As you do so the task list below will update reflecting your standup. When done enter `publsh` to send it to #"+kPublishToChannel+"_")
+        self.send_response("_Standupbot remembers your todo and wip tasks from yesterday, and will automatically remove your done and cancelled tasks after you publish them. No more remembering and repeating yourself! :sweat_smile:_")
 
     def publish(self):
         self.send_response("Publishing to #standup...")
@@ -213,6 +177,9 @@ class Conversation:
         return self.send_response(self.render_task_list(), update=update)
 
     def render_task_list(self, presentation=False):
+        if not self.task_list.tasks:
+            return "_You have no tasks yet, what do you say you do around here?_ :thinking_face: Enter a task using `-` and this message will get updated.\n"
+
         past_msg = ""
         new_msg = ""
 
@@ -226,8 +193,9 @@ class Conversation:
 
         msg = ""
         if presentation:
-            msg = "*Previously* (status changes in _italics_)\n"
-            msg += past_msg
+            if past_msg:
+                msg += "*Previously* (status changes in _italics_)\n"
+                msg += past_msg
 
             if new_msg:
                 msg += "*New Tasks*\n"
