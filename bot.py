@@ -150,9 +150,9 @@ class Conversation:
 
         self.send_response("_You can tell me what to mark as `done`, `wip` or `cancelled` by saying `done 1,3,6` for example."
                            "To delete a task use `delete` and to mark it back as todo use `todo`. To simply show the list type `show`"
-                           "To start a new task simply enter a dash and start typing like `- new task for today`_")
-        self.send_response("_As you do so the task list below will update reflecting your standup. When done enter `publsh` to send it to #"+kPublishToChannel+"_")
-        self.send_response("_Standupbot remembers your todo and wip tasks from yesterday, and will automatically remove your done and cancelled tasks after you publish them. No more remembering and repeating yourself! :sweat_smile:_")
+                           "To start a new task simply enter a dash and the task. e.g. `- new task for today`_")
+        self.send_response("_The task list below will be automagically updated. When done enter `publish` to send it to #"+kPublishToChannel+"_")
+        self.send_response("_Standupbot remembers your `todo` and `wip` tasks from yesterday, and will automatically remove your done and cancelled tasks after you publish them. No more remembering and repeating yourself! :sweat_smile:_")
 
     def publish(self):
         self.send_response("Publishing to " +kPublishToChannel)
@@ -199,7 +199,7 @@ class Conversation:
 
     def render_task_list(self, presentation=False):
         if not self.task_list.tasks:
-            return "_You have no tasks yet, what do you say you do around here?_ :thinking_face: Enter a task using `-` and this message will get updated.\n"
+            return "_You have no tasks yet, what do you say you do around here?_ :thinking_face: Enter a task by simply typing something like `-new task for today` and this message will get updated.\n"
 
         past_msg = ""
         new_msg = ""
