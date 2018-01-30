@@ -85,47 +85,49 @@ class Conversation:
         self.task_list = taskmanager.get_tasklist(uid)
         self.new_tasks = []
         self.updated_tasks = set()
-        self.main_task_list_ts = None
+        self.last_task_list_ts = None
+        self.last_published_list_ts = None
 
     def incoming_message(self, message):
         msg = message.lower()
 
-
         if msg.startswith("start"):
             self.send_response("_Lets begin!_ :punch:\n")
             self.show_help()
-            response = self.show_task_list()
-            self.main_task_list_ts = response["ts"]
-            self.current_status = self.WaitingForCommands
-        elif self.current_status == self.WaitingForCommands:
-            if msg.startswith("done"):
-                self.check_and_mark_status(Status.DONE, msg, "Great job getting those done! :clap:\n")
-                self.show_task_list(update=True)
-            elif msg.startswith("wip"):
-                self.check_and_mark_status(Status.WIP, msg, "Its okay we'll get those tomorrow! :punch:\n")
-                self.show_task_list(update=True)
-            elif msg.startswith("cancelled"):
-                self.check_and_mark_status(Status.CANCELLED, msg, "They weren't worth it anyways.. \n")
-                self.show_task_list(update=True)
-            elif msg.startswith("delete"):
-                self.check_and_mark_status(Status.DELETED, msg, "Deleted \n")
-                self.show_task_list(update=True)
-            elif msg.startswith("publish"):
-                self.publish()
-                self.current_status = self.WaitingForStart
+            self.show_task_list()
+        elif msg.startswith("show"):
+            self.show_task_list()
+        elif msg.startswith("done"):
+            self.check_and_mark_status(Status.DONE, msg, "Great job getting those done! :clap:\n")
+            self.show_task_list()
+        elif msg.startswith("wip"):
+            self.check_and_mark_status(Status.WIP, msg, "Its okay we'll get those tomorrow! :punch:\n")
+            self.show_task_list()
+        elif msg.startswith("cancelled"):
+            self.check_and_mark_status(Status.CANCELLED, msg, "They weren't worth it anyways.. \n")
+            self.show_task_list()
+        elif msg.startswith("delete"):
+            self.check_and_mark_status(Status.DELETED, msg, "Deleted \n")
+            self.show_task_list()
+        elif msg.startswith("todo"):
+            self.check_and_mark_status(Status.NEW, msg, "Back to Todo\n")
+            self.show_task_list()
+        elif msg.startswith("publish"):
+            self.publish()
+            self.current_status = self.WaitingForStart
 
-            elif msg.startswith("-"):
-                lines = msg.strip().split("\n")
-                for line in lines:
-                    split = line.strip().split("-")
-                    if len(split) > 1:
-                        new_task = self.add_task(split[1].strip());
-                        self.new_tasks.append(new_task)
-                        self.updated_tasks.add(new_task)
+        elif msg.startswith("-"):
+            lines = msg.strip().split("\n")
+            for line in lines:
+                split = line.strip().split("-")
+                if len(split) > 1:
+                    new_task = self.add_task(split[1].strip());
+                    self.new_tasks.append(new_task)
+                    self.updated_tasks.add(new_task)
 
-                self.show_task_list(update=True)
-            else:
-                self.show_help(error=True)
+            self.show_task_list()
+        else:
+            self.show_help(error=True)
 
 
     def check_and_mark_status(self, status, msg, success_msg):
@@ -146,17 +148,23 @@ class Conversation:
         if error:
             self.send_response("I don't understand what you mean :confused:")
 
-        self.send_response("_You can tell me what to mark as `done`, `wip`, `cancelled` by saying `done 1,3,6` "
-                           "for example. To start a new task simply enter a dash and start typing like"
-                           " `- new task for today`_")
+        self.send_response("_You can tell me what to mark as `done`, `wip` or `cancelled` by saying `done 1,3,6` for example."
+                           "To delete a task use `delete` and to mark it back as todo use `todo`. To simply show the list type `show`"
+                           "To start a new task simply enter a dash and start typing like `- new task for today`_")
         self.send_response("_As you do so the task list below will update reflecting your standup. When done enter `publsh` to send it to #"+kPublishToChannel+"_")
         self.send_response("_Standupbot remembers your todo and wip tasks from yesterday, and will automatically remove your done and cancelled tasks after you publish them. No more remembering and repeating yourself! :sweat_smile:_")
 
     def publish(self):
-        self.send_response("Publishing to #standup...")
-        self.send_response(self.render_task_list(presentation=True), kPublishToChannel, postAsUser=True)
+        self.send_response("Publishing to " +kPublishToChannel)
+        self.last_published_list_ts = self.send_response(self.render_task_list(presentation=True), kPublishToChannel, postAsUser=True)["ts"]
         self.task_list.prune()
+        self.updated_tasks.clear()
+        self.new_tasks = []
         self.main_task_list_ts = None
+
+    def update_last_published(self):
+        self.send_response("Updating last published list on "+kPublishToChannel)
+        # WIP needs work!
 
     def get_task_ids(self, msg):
         only_ids = re.findall("^\w+\s(.*)", msg)[0].strip()
@@ -182,7 +190,12 @@ class Conversation:
 
 
     def show_task_list(self, update=False):
-        return self.send_response(self.render_task_list(), update=update)
+        if not update:
+            self.delete_last_response()
+
+        response = self.send_response(self.render_task_list(), update=update)
+        self.last_task_list_ts = response["ts"]
+        return response
 
     def render_task_list(self, presentation=False):
         if not self.task_list.tasks:
@@ -195,7 +208,10 @@ class Conversation:
 
             curr_msg = self.render(task_id, desc[1], desc[2], presentation=presentation) + "\n"
             if task_id in self.new_tasks:
-                new_msg += curr_msg
+                if presentation:
+                    new_msg += curr_msg
+                else:
+                    new_msg += curr_msg
             else:
                 past_msg += curr_msg
 
@@ -216,9 +232,12 @@ class Conversation:
 
         return msg
 
-    def send_response(self, msg, channel=None, update=False, postAsUser=False):
+    def send_response(self, msg, channel=None, update=False, postAsUser=False, ts=None):
         if not channel:
             channel = self.userid
+
+        if not ts:
+            ts = self.last_task_list_ts
 
         action = "chat.update" if update else "chat.postMessage"
         username = self.name + " (via @standupbot)" if postAsUser else "Standup"
@@ -229,8 +248,21 @@ class Conversation:
             username=username,
             icon_url=iconurl,
             link_names=True,
-            ts=self.main_task_list_ts,
+            ts=ts,
             text=msg
+        )
+
+    def delete_last_response(self, ts=None, channel=None):
+        if not channel:
+            channel = self.userid
+
+        if not ts:
+            ts = self.last_task_list_ts
+
+        return slack_client.api_call(
+            "chat.delete",
+            channel=channel,
+            ts=ts
         )
 
     def get_emoji_for_status(self, status):
