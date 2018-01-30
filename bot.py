@@ -90,16 +90,13 @@ class Conversation:
     def incoming_message(self, message):
         msg = message.lower()
 
-        if self.current_status == self.WaitingForStart:
-            if msg.startswith("start"):
-                self.send_response("_Lets begin!_ :punch:\n")
-                self.show_help()
-                response = self.show_task_list()
-                self.main_task_list_ts = response["ts"]
-                self.current_status = self.WaitingForCommands
-            else:
-                self.send_response("_Type `start` to begin a standup report_")
 
+        if msg.startswith("start"):
+            self.send_response("_Lets begin!_ :punch:\n")
+            self.show_help()
+            response = self.show_task_list()
+            self.main_task_list_ts = response["ts"]
+            self.current_status = self.WaitingForCommands
         elif self.current_status == self.WaitingForCommands:
             if msg.startswith("done"):
                 self.check_and_mark_status(Status.DONE, msg, "Great job getting those done! :clap:\n")
@@ -109,6 +106,9 @@ class Conversation:
                 self.show_task_list(update=True)
             elif msg.startswith("cancelled"):
                 self.check_and_mark_status(Status.CANCELLED, msg, "They weren't worth it anyways.. \n")
+                self.show_task_list(update=True)
+            elif msg.startswith("delete"):
+                self.check_and_mark_status(Status.DELETED, msg, "Deleted \n")
                 self.show_task_list(update=True)
             elif msg.startswith("publish"):
                 self.publish()
@@ -132,9 +132,13 @@ class Conversation:
         task_ids = self.get_task_ids(msg)
         print (task_ids)
         if task_ids:
+            if status == Status.DELETED:
+                self.delete_tasks(task_ids)
+                self.updated_tasks.difference_update(task_ids)
+            else:
+                self.mark_status(status, task_ids)
+                self.updated_tasks.update(task_ids)
             self.send_response(success_msg)
-            self.mark_status(status, task_ids)
-            self.updated_tasks.update(task_ids)
         else:
             self.show_help(error=True)
 
@@ -160,6 +164,12 @@ class Conversation:
             return [int(x.strip()) for x in only_ids.split(",")]
         else:
             return None
+
+    def delete_tasks(self, task_ids):
+        if task_ids:
+            for task_id in task_ids:
+                if task_id:
+                    self.task_list.delete_task(task_id)
 
     def mark_status(self, status, task_ids):
         if task_ids:

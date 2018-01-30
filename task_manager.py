@@ -10,6 +10,7 @@ class Status(IntEnum):
     WIP = 2
     DONE = 3
     CANCELLED = 4
+    DELETED = 5
 
 
 class TaskManager:
@@ -56,6 +57,13 @@ class TaskList:
         for task_id,task in self.tasks.items():
             if task[0] == last_id[0]:
                 return task_id
+
+    def delete_task(self, canonical_id):
+        c = self.conn.cursor()
+        task_id = self.tasks[int(canonical_id)][0]
+        c.execute('DELETE from user_tasks where id=?', (task_id,))
+        self.conn.commit()
+        self.refresh()
 
     def refresh(self):
         self.load_tasks()
