@@ -69,6 +69,8 @@ class Bot:
                                                          self.user_list[from_user]["real_name"],
                                                          self.user_list[from_user]["profile"]["image_48"])
 
+        text = re.sub("\<@(.*?)>", lambda x: '@'+self.user_list[re.findall("(?<=\<@).*?(?=>)", x.group(0))[0]]["name"], text)
+        print ("Processed text : {}".format(text))
         self.conversations[from_user].incoming_message(text)
 
 class Conversation:
@@ -128,11 +130,11 @@ class Conversation:
 
     def check_and_mark_status(self, status, msg, success_msg):
         task_ids = self.get_task_ids(msg)
+        print (task_ids)
         if task_ids:
             self.send_response(success_msg)
             self.mark_status(status, task_ids)
             self.updated_tasks.update(task_ids)
-            print(self.updated_tasks)
         else:
             self.show_help(error=True)
 
@@ -153,15 +155,11 @@ class Conversation:
         self.main_task_list_ts = None
 
     def get_task_ids(self, msg):
-        if msg.strip():
-            split = msg.split(" ")
-            if len(split) != 2:
-                return None
-            else:
-                return [int(x) for x in split[1].strip().split(",")]
+        only_ids = re.findall("^\w+\s(.*)", msg)[0].strip()
+        if only_ids:
+            return [int(x.strip()) for x in only_ids.split(",")]
         else:
             return None
-
 
     def mark_status(self, status, task_ids):
         if task_ids:
@@ -220,6 +218,7 @@ class Conversation:
             channel=channel,
             username=username,
             icon_url=iconurl,
+            link_names=True,
             ts=self.main_task_list_ts,
             text=msg
         )
