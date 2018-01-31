@@ -72,7 +72,7 @@ class Bot:
                                                          self.user_list[from_user]["real_name"],
                                                          self.user_list[from_user]["profile"]["image_48"])
 
-        text = re.sub("\<@(.*?)>", lambda x: '@'+self.user_list[re.findall("(?<=\<@).*?(?=>)", x.group(0))[0]]["name"], text)
+        # text = re.sub("\<@(.*?)>", lambda x: '@'+self.user_list[re.findall("(?<=\<@).*?(?=>)", x.group(0))[0]]["name"], text)
         print ("Processed text : {}".format(text))
         self.conversations[from_user].incoming_message(text)
 
@@ -91,31 +91,30 @@ class Conversation:
         self.last_task_list_ts = None
         self.last_published_list_ts = None
 
-    def incoming_message(self, message):
-        msg = message.lower()
+    def incoming_message(self, msg):
 
-        if msg.startswith("start"):
+        if msg.lower().startswith("start"):
             self.send_response("_Lets begin!_ :punch:\n")
             self.show_help()
             self.show_task_list()
-        elif msg.startswith("show"):
+        elif msg.lower().startswith("show"):
             self.show_task_list()
-        elif msg.startswith("done"):
+        elif msg.lower().startswith("done"):
             self.check_and_mark_status(Status.DONE, msg, "Great job getting those done! :clap:\n")
             self.show_task_list()
-        elif msg.startswith("wip"):
+        elif msg.lower().startswith("wip"):
             self.check_and_mark_status(Status.WIP, msg, "Its okay we'll get those tomorrow! :punch:\n")
             self.show_task_list()
-        elif msg.startswith("cancelled"):
+        elif msg.lower().startswith("cancelled"):
             self.check_and_mark_status(Status.CANCELLED, msg, "They weren't worth it anyways.. \n")
             self.show_task_list()
-        elif msg.startswith("delete"):
+        elif msg.lower().startswith("delete"):
             self.check_and_mark_status(Status.DELETED, msg, "Deleted \n")
             self.show_task_list()
-        elif msg.startswith("todo"):
+        elif msg.lower().startswith("todo"):
             self.check_and_mark_status(Status.NEW, msg, "Back to Todo\n")
             self.show_task_list()
-        elif msg.startswith("publish"):
+        elif msg.lower().startswith("publish"):
             self.publish()
             self.current_status = self.WaitingForStart
 
@@ -198,6 +197,7 @@ class Conversation:
 
         response = self.send_response(self.render_task_list(), update=update)
         self.last_task_list_ts = response["ts"]
+        print(response)
         return response
 
     def render_task_list(self, presentation=False):
@@ -250,8 +250,6 @@ class Conversation:
             channel=channel,
             username=username,
             icon_url=iconurl,
-            link_names=0,
-            parse='full',
             ts=ts,
             text=msg
         )

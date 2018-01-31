@@ -60,6 +60,8 @@ class TaskList:
 
     def delete_task(self, canonical_id):
         c = self.conn.cursor()
+        if int(canonical_id) not in self.tasks:
+            return None
         task_id = self.tasks[int(canonical_id)][0]
         c.execute('DELETE from user_tasks where id=?', (task_id,))
         self.conn.commit()
@@ -69,6 +71,8 @@ class TaskList:
         self.load_tasks()
 
     def change_status(self, canonical_id, status):
+        if int(canonical_id) not in self.tasks:
+            return None
         c = self.conn.cursor()
         assert status in Status
         task_id = self.tasks[int(canonical_id)][0]
