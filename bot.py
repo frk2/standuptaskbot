@@ -11,6 +11,7 @@ slack_client = SlackClient(config.auth["bot_access_token"])
 starterbot_id = None
 taskmanager = TaskManager()
 
+RECONNECT_DELAY = 10
 # constants
 kPublishToChannel = config.general["post_to_channel"]
 
@@ -21,30 +22,32 @@ class Bot:
         self.channels = {}
 
     def mainloop(self):
-        if slack_client.rtm_connect(with_team_state=False):
-            print("Starter Bot connected and running!")
-            # Read bot's user ID by calling Web API method `auth.test`
-            starterbot_id = slack_client.api_call("auth.test")["user_id"]
-            users = slack_client.api_call("users.list")["members"]
-            channels = slack_client.api_call("channels.list")["channels"]
+        while (True):
+            if slack_client.rtm_connect(with_team_state=False):
+                print("Starter Bot connected and running!")
+                # Read bot's user ID by calling Web API method `auth.test`
+                starterbot_id = slack_client.api_call("auth.test")["user_id"]
+                users = slack_client.api_call("users.list")["members"]
+                channels = slack_client.api_call("channels.list")["channels"]
 
-            for user in users:
-                self.user_list[user["id"]] = user
+                for user in users:
+                    self.user_list[user["id"]] = user
 
-            for channel in channels:
-                self.channels[channel["name"]] = channel["id"]
+                for channel in channels:
+                    self.channels[channel["name"]] = channel["id"]
 
-            while True:
-                try:
-                    command, channel = self.parse_bot_commands(slack_client.rtm_read())
-                    if command:
-                        self.handle_command(command, channel)
-                except Exception as e:
-                    print(e)
+                while True:
+                    try:
+                        command, channel = self.parse_bot_commands(slack_client.rtm_read())
+                        if command:
+                            self.handle_command(command, channel)
+                    except Exception as e:
+                        print(e)
+                        break
 
-                #time.sleep(RTM_READ_DELAY)
-        else:
-            print("Connection failed. Exception traceback printed above.")
+            else:
+                print("Connection failed. Exception traceback printed above.")
+                time.sleep(RECONNECT_DELAY)
 
     def parse_bot_commands(self, slack_events):
         """
@@ -247,7 +250,8 @@ class Conversation:
             channel=channel,
             username=username,
             icon_url=iconurl,
-            link_names=True,
+            link_names=0,
+            parse='full',
             ts=ts,
             text=msg
         )
