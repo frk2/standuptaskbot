@@ -121,9 +121,9 @@ class Conversation:
         elif msg.startswith("-"):
             lines = msg.strip().split("\n")
             for line in lines:
-                split = line.strip().split("-")
-                if len(split) > 1:
-                    new_task = self.add_task(split[1].strip());
+                new_msg = re.findall("^-(.*)", line)[0].strip()
+                if new_msg:
+                    new_task = self.add_task(new_msg);
                     self.new_tasks.append(new_task)
                     self.updated_tasks.add(new_task)
 
@@ -177,9 +177,7 @@ class Conversation:
 
     def delete_tasks(self, task_ids):
         if task_ids:
-            for task_id in task_ids:
-                if task_id:
-                    self.task_list.delete_task(task_id)
+            self.task_list.delete_task(task_ids)
 
     def mark_status(self, status, task_ids):
         if task_ids:
@@ -197,7 +195,6 @@ class Conversation:
 
         response = self.send_response(self.render_task_list(), update=update)
         self.last_task_list_ts = response["ts"]
-        print(response)
         return response
 
     def render_task_list(self, presentation=False):

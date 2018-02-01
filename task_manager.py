@@ -58,13 +58,13 @@ class TaskList:
             if task[0] == last_id[0]:
                 return task_id
 
-    def delete_task(self, canonical_id):
+    def delete_task(self, canonical_ids):
         c = self.conn.cursor()
-        if int(canonical_id) not in self.tasks:
-            return None
-        task_id = self.tasks[int(canonical_id)][0]
-        c.execute('DELETE from user_tasks where id=?', (task_id,))
-        self.conn.commit()
+        for canonical_id in canonical_ids:
+            if int(canonical_id) in self.tasks:
+                task_id = self.tasks[int(canonical_id)][0]
+                c.execute('DELETE from user_tasks where id=?', (task_id,))
+                self.conn.commit()
         self.refresh()
 
     def refresh(self):
