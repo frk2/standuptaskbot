@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 import os
 import time
 import re
@@ -150,8 +152,8 @@ class Conversation:
         if error:
             self.send_response("I don't understand what you mean :confused:")
 
-        self.send_response("_You can tell me what to mark as `done`, `wip` or `cancelled` by saying `done 1,3,6` for example."
-                           "To delete a task use `delete` and to mark it back as todo use `todo`. To simply show the list type `show`"
+        self.send_response("_You can tell me what to mark as `done`, `wip` or `cancelled` by saying `done 1,3,6` for example. "
+                           "To delete a task use `delete` and to mark it back as todo use `todo`. To simply show the list type `show`. "
                            "To start a new task simply enter a dash and the task. e.g. `- new task for today`_")
         self.send_response("_The task list below will be automagically updated. When done enter `publish` to send it to #"+kPublishToChannel+"_")
         self.send_response("_Standupbot remembers your `todo` and `wip` tasks from yesterday, and will automatically remove your done and cancelled tasks after you publish them. No more remembering and repeating yourself! :sweat_smile:_")
