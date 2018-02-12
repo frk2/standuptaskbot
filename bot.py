@@ -224,6 +224,7 @@ class Conversation:
                 msg += past_msg
 
             if new_msg:
+                msg += "\n"
                 msg += "*New Tasks*\n"
                 msg += new_msg
 
