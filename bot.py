@@ -88,7 +88,7 @@ class Conversation:
         self.name = name
         self.icon_url = icon_url
         self.task_list = taskmanager.get_tasklist(uid)
-        self.new_tasks = []
+        self.new_tasks = set()
         self.updated_tasks = set()
         self.last_task_list_ts = None
         self.last_published_list_ts = None
@@ -126,7 +126,7 @@ class Conversation:
                 new_msg = re.findall("^-(.*)", line)[0].strip()
                 if new_msg:
                     new_task = self.add_task(new_msg);
-                    self.new_tasks.append(new_task)
+                    self.new_tasks.add(new_task)
                     self.updated_tasks.add(new_task)
 
             self.show_task_list()
@@ -144,6 +144,10 @@ class Conversation:
             else:
                 self.mark_status(status, task_ids)
                 self.updated_tasks.update(task_ids)
+
+            if status != Status.NEW:
+                self.new_tasks.difference_update(task_ids)
+
             self.send_response(success_msg)
         else:
             self.show_help(error=True)
@@ -163,8 +167,10 @@ class Conversation:
         self.last_published_list_ts = self.send_response(self.render_task_list(presentation=True), kPublishToChannel, postAsUser=True)["ts"]
         self.task_list.prune()
         self.updated_tasks.clear()
-        self.new_tasks = []
+        self.new_tasks = set()
         self.main_task_list_ts = None
+        self.send_response("New task list is now: ")
+        self.show_task_list()
 
     def update_last_published(self):
         self.send_response("Updating last published list on "+kPublishToChannel)
@@ -220,7 +226,7 @@ class Conversation:
         msg = ""
         if presentation:
             if past_msg:
-                msg += "*Previously* (status changes in _italics_)\n"
+                msg += "*Previously*\n"
                 msg += past_msg
 
             if new_msg:
@@ -283,8 +289,8 @@ class Conversation:
         else:
             msg = "{}:{} {}".format(taskid, self.get_emoji_for_status(status), desc)
 
-        if taskid in self.updated_tasks:
-            msg = "_" + msg + "_"
+        # if taskid in self.updated_tasks:
+        #     msg = "_" + msg + "_"
         return msg
 
 if __name__ == "__main__":
