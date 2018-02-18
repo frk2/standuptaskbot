@@ -14,6 +14,10 @@ starterbot_id = None
 taskmanager = TaskManager()
 
 RECONNECT_DELAY = 10
+HIGH_ACTIVITY_WINDOW_SEC = 30
+HIGH_ACTIVITY_DELAY_S = 0.1
+LOW_ACTIVITY_DELAY_S = 1.0
+
 # constants
 kPublishToChannel = config.general["post_to_channel"]
 
@@ -22,6 +26,8 @@ class Bot:
         self.user_list = {}
         self.conversations = {}
         self.channels = {}
+        self.high_activity_mode = False
+        self.last_activity_ts = time.time()
 
     def mainloop(self):
         while (True):
@@ -40,9 +46,20 @@ class Bot:
 
                 while True:
                     try:
-                        command, channel = self.parse_bot_commands(slack_client.rtm_read())
-                        if command:
-                            self.handle_command(command, channel)
+                        if self.parse_bot_commands(slack_client.rtm_read()):
+                            self.high_activity_mode = True
+                            self.last_activity_ts = time.time()
+
+
+                        if time.time() - self.last_activity_ts > HIGH_ACTIVITY_WINDOW_SEC:
+                            self.high_activity_mode = False
+
+
+                        if self.high_activity_mode:
+                            time.sleep(HIGH_ACTIVITY_DELAY_S)
+                        else:
+                            time.sleep(LOW_ACTIVITY_DELAY_S)
+
                     except Exception as e:
                         print(e)
                         break
@@ -62,10 +79,8 @@ class Bot:
             if event["type"] == "message" and not "subtype" in event:
                 if event["channel"].startswith("D"):
                     self.handle_dm_command(event["user"], event["text"], event["channel"])
-                # user_id, message = self.parse_direct_mention(event["text"])
-                # if user_id == starterbot_id:
-                #     return message, event["channel"]
-        return None, None
+                    return True
+        return False
 
     def handle_dm_command(self, from_user, text, channel):
         print ("Text: {} from user: {}".format(text, from_user))
