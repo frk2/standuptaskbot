@@ -131,6 +131,14 @@ class Conversation:
         elif msg.lower().startswith("todo"):
             self.check_and_mark_status(Status.NEW, msg, "Back to Todo\n")
             self.show_task_list()
+        elif msg.lower().startswith("new"):
+            self.set_new_or_previous(True, msg)
+            self.show_task_list()
+        elif msg.lower().startswith("preview"): # this is super ghetto but this ordering matters :)
+            self.preview()
+        elif msg.lower().startswith("prev"):
+            self.set_new_or_previous(False, msg)
+            self.show_task_list()
         elif msg.lower().startswith("publish"):
             self.publish()
             self.current_status = self.WaitingForStart
@@ -148,10 +156,17 @@ class Conversation:
         else:
             self.show_help(error=True)
 
-
+    def set_new_or_previous(self, isnew, msg):
+        task_ids = self.get_task_ids(msg)
+        if task_ids:
+            if isnew:
+                self.new_tasks.update(task_ids)
+            else:
+                self.new_tasks.difference_update(task_ids)
+        else:
+            self.show_help(error=True)
     def check_and_mark_status(self, status, msg, success_msg):
         task_ids = self.get_task_ids(msg)
-        print (task_ids)
         if task_ids:
             if status == Status.DELETED:
                 self.delete_tasks(task_ids)
@@ -172,9 +187,10 @@ class Conversation:
             self.send_response("I don't understand what you mean :confused:")
 
         self.send_response("_You can tell me what to mark as `done`, `wip` or `cancelled` by saying `done 1,3,6` for example. "
+                           "You can also mark tasks as `new` or `prev`. "
                            "To delete a task use `delete` and to mark it back as todo use `todo`. To simply show the list type `show`. "
-                           "To start a new task simply enter a dash and the task. e.g. `- new task for today`_")
-        self.send_response("_The task list below will be automagically updated. When done enter `publish` to send it to #"+kPublishToChannel+"_")
+                           "To start a new task simply enter a dash and the task. e.g. `- new task for today`")
+        self.send_response("_The task list below will be automagically updated. When done enter `preview` to preview or `publish` to send it to #"+kPublishToChannel+"_")
         self.send_response("_Standupbot remembers your `todo` and `wip` tasks from yesterday, and will automatically remove your done and cancelled tasks after you publish them. No more remembering and repeating yourself! :sweat_smile:_")
 
     def publish(self):
@@ -186,6 +202,11 @@ class Conversation:
         self.main_task_list_ts = None
         self.send_response("New task list is now: ")
         self.show_task_list()
+
+    def preview(self):
+        response = self.send_response(self.render_task_list(presentation=True), update=False)
+        self.last_task_list_ts = response["ts"]
+        return response
 
     def update_last_published(self):
         self.send_response("Updating last published list on "+kPublishToChannel)
@@ -226,17 +247,21 @@ class Conversation:
 
         past_msg = ""
         new_msg = ""
+        full_msg = ""
 
         for task_id, desc in self.task_list.tasks.items():
 
-            curr_msg = self.render(task_id, desc[1], desc[2], presentation=presentation) + "\n"
+            curr_msg = self.render(task_id, desc[1], desc[2], presentation=presentation)
             if task_id in self.new_tasks:
                 if presentation:
-                    new_msg += curr_msg
+                    curr_msg += ""
                 else:
-                    new_msg += curr_msg
+                    curr_msg += " _(new)_"
+                new_msg += curr_msg + "\n"
             else:
-                past_msg += curr_msg
+                past_msg += curr_msg + "\n"
+
+            full_msg += curr_msg + "\n"
 
         msg = ""
         if presentation:
@@ -250,7 +275,7 @@ class Conversation:
                 msg += new_msg
 
         else:
-            msg = past_msg + new_msg
+            msg = full_msg
 
         msg += "\n"
 
